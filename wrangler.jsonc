@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "di-001-a-lodging-decision-mcp",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "kv_namespaces": [
+    {
+      "binding": "DI_001_A_ABUSE_CEILING",
+      "id": "a7b2e2bf44384eb78ac8cfeaf539267b"
+    }
+  ]
+}

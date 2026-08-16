@@ -1,0 +1,72 @@
+{
+  "decision_id": "sg_b9d231426e8498d9",
+  "recommended_listing_id": "harbor-work-studio",
+  "ranked_candidates": [
+    {
+      "rank": 1,
+      "listing_id": "harbor-work-studio",
+      "score": 87.96,
+      "eligible": true,
+      "estimated_total": 675,
+      "currency": "USD",
+      "score_breakdown": { "budget": 14, "location": 13, "amenities": 15, "accessibility": 10, "work": 10, "quality": 18.96, "policy": 5, "fees": 2 },
+      "summary": "Meets all confirmed hard constraints with a 87.96/100 deterministic score.",
+      "hard_constraint_failures": []
+    },
+    {
+      "rank": 2,
+      "listing_id": "old-town-design-loft",
+      "score": 58.08,
+      "eligible": false,
+      "estimated_total": 805,
+      "currency": "USD",
+      "score_breakdown": { "budget": 12.84, "location": 14.33, "amenities": 13.5, "accessibility": 0, "work": 10, "quality": 15.41, "policy": 2, "fees": 2 },
+      "summary": "Fallback only: fails accessibility:step-free entry with a 58.08/100 deterministic score.",
+      "hard_constraint_failures": ["accessibility:step-free entry"]
+    },
+    {
+      "rank": 3,
+      "listing_id": "garden-value-flat",
+      "score": 43.14,
+      "eligible": false,
+      "estimated_total": 585,
+      "currency": "USD",
+      "score_breakdown": { "budget": 14.8, "location": 1, "amenities": 13.5, "accessibility": 10, "work": 5, "quality": 17.84, "policy": 3, "fees": 2 },
+      "summary": "Fallback only: fails work:ethernet, max_distance with a 43.14/100 deterministic score.",
+      "hard_constraint_failures": ["work:ethernet", "max_distance"]
+    }
+  ],
+  "decision_reason": "Harbor Work Studio ranks first at 87.96/100. It satisfies every confirmed hard constraint.",
+  "evidence": [
+    { "listing_id": "harbor-work-studio", "signal": "estimated_total", "value": 675, "impact": "positive", "explanation": "3 nights plus supplied fees, compared with the trip budget." },
+    { "listing_id": "harbor-work-studio", "signal": "required_amenities", "value": "2/2", "impact": "positive", "explanation": "Explicit match count for required amenities." },
+    { "listing_id": "harbor-work-studio", "signal": "rating", "value": 4.88, "impact": "positive", "explanation": "Quality signal backed by 214 reviews." },
+    { "listing_id": "harbor-work-studio", "signal": "distance_to_preference_km", "value": 1.2, "impact": "positive", "explanation": "Candidate-provided distance to the traveler location preference." }
+  ],
+  "tradeoffs": [
+    { "listing_id": "harbor-work-studio", "description": "Is farther from the stated location preference than old-town-design-loft." }
+  ],
+  "risk_flags": [],
+  "constraint_matches": [
+    { "listing_id": "harbor-work-studio", "constraint": "group_size", "status": "met", "evidence": "2 guest capacity for a group of 2." },
+    { "listing_id": "harbor-work-studio", "constraint": "budget_currency", "status": "met", "evidence": "Both values use USD." },
+    { "listing_id": "harbor-work-studio", "constraint": "max_total_budget", "status": "met", "evidence": "675 USD estimated total versus 900 USD maximum." },
+    { "listing_id": "harbor-work-studio", "constraint": "max_nightly_budget", "status": "met", "evidence": "180 USD nightly versus 225 USD maximum." },
+    { "listing_id": "harbor-work-studio", "constraint": "required_amenity:wifi", "status": "met", "evidence": "wifi is listed." },
+    { "listing_id": "harbor-work-studio", "constraint": "required_amenity:kitchen", "status": "met", "evidence": "kitchen is listed." },
+    { "listing_id": "harbor-work-studio", "constraint": "accessibility:step-free entry", "status": "met", "evidence": "step-free entry is explicitly supported." },
+    { "listing_id": "harbor-work-studio", "constraint": "work:dedicated workspace", "status": "met", "evidence": "dedicated workspace is explicitly supported." },
+    { "listing_id": "harbor-work-studio", "constraint": "work:ethernet", "status": "met", "evidence": "ethernet is explicitly supported." },
+    { "listing_id": "harbor-work-studio", "constraint": "minimum_nights", "status": "met", "evidence": "3-night trip versus 2-night minimum." },
+    { "listing_id": "harbor-work-studio", "constraint": "max_distance", "status": "met", "evidence": "1.2 km away versus 3 km maximum." }
+  ],
+  "confidence": 0.82,
+  "missing_information": [],
+  "agent_explanation": "Recommend Harbor Work Studio (harbor-work-studio). Harbor Work Studio ranks first at 87.96/100. It satisfies every confirmed hard constraint. Estimated trip total is 675 USD. Confidence is 0.82. Main tradeoff: Is farther from the stated location preference than old-town-design-loft. Next action: Book the recommended listing using the supplied terms, then retain this decision record.",
+  "booking_next_action": {
+    "action": "book",
+    "listing_id": "harbor-work-studio",
+    "instructions": "Book the recommended listing using the supplied terms, then retain this decision record.",
+    "checks": ["Confirm live price and availability before purchase."]
+  }
+}
