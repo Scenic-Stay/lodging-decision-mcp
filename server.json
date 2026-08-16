@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.scenicstay/lodging-decision-mcp",
+  "title": "Lodging Decision",
+  "description": "Agent-facing lodging decision tool. Non-sensitive categories only. Alpha, unauthenticated.",
+  "repository": {
+    "url": "https://github.com/Scenic-Stay/lodging-decision-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0-alpha",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://di-001-a-lodging-decision-mcp.scenicstay.workers.dev/mcp"
+    }
+  ]
+}
