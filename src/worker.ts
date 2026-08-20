@@ -159,12 +159,25 @@ function buildServer(): McpServer {
 const SAMPLE_RATE = 0.05;
 const SAMPLE_INCREMENT = Math.round(1 / SAMPLE_RATE);
 
+function dayKeyFor(date: Date): string {
+  return `count:${date.toISOString().slice(0, 10)}`;
+}
+
 async function withinDailyCeiling(env: Env): Promise<boolean> {
-  const dayKey = `count:${new Date().toISOString().slice(0, 10)}`;
+  const dayKey = dayKeyFor(new Date());
   const current = Number((await env.DI_001_A_ABUSE_CEILING.get(dayKey)) ?? '0');
   if (current >= DAILY_REQUEST_CEILING) return false;
   if (Math.random() < SAMPLE_RATE) {
-    await env.DI_001_A_ABUSE_CEILING.put(dayKey, String(current + SAMPLE_INCREMENT), { expirationTtl: 172800 });
+    const increment = SAMPLE_INCREMENT;
+    await Promise.all([
+      env.DI_001_A_ABUSE_CEILING.put(dayKey, String(current + increment), { expirationTtl: 172800 }),
+      // Lifetime cumulative estimate, no expiry -- lets /stats report total usage
+      // since deploy, not just the last couple of days the daily keys retain.
+      (async () => {
+        const lifetime = Number((await env.DI_001_A_ABUSE_CEILING.get('count:lifetime')) ?? '0');
+        await env.DI_001_A_ABUSE_CEILING.put('count:lifetime', String(lifetime + increment));
+      })(),
+    ]);
   }
   return true;
 }
@@ -175,6 +188,25 @@ export default {
 
     if (url.pathname === '/health') {
       return new Response('ok', { status: 200 });
+    }
+
+    if (url.pathname === '/stats') {
+      const now = new Date();
+      const yesterday = new Date(now.getTime() - 86400000);
+      const [today, priorDay, lifetime] = await Promise.all([
+        env.DI_001_A_ABUSE_CEILING.get(dayKeyFor(now)),
+        env.DI_001_A_ABUSE_CEILING.get(dayKeyFor(yesterday)),
+        env.DI_001_A_ABUSE_CEILING.get('count:lifetime'),
+      ]);
+      return new Response(
+        JSON.stringify({
+          today_estimated_requests: Number(today ?? '0'),
+          yesterday_estimated_requests: Number(priorDay ?? '0'),
+          lifetime_estimated_requests: Number(lifetime ?? '0'),
+          note: 'Sampled estimate (5% write rate, scaled), not an exact count. See src/worker.ts withinDailyCeiling.',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
     }
 
     if (url.pathname !== '/mcp') {
