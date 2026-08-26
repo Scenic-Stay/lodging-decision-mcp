@@ -190,6 +190,16 @@ export default {
       return new Response('ok', { status: 200 });
     }
 
+    if (url.pathname === '/.well-known/glama.json') {
+      return new Response(
+        JSON.stringify({
+          $schema: 'https://glama.ai/mcp/schemas/connector.json',
+          maintainers: [{ email: 'scenicstay@abetterbnb.com' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }
+
     if (url.pathname === '/stats') {
       const now = new Date();
       const yesterday = new Date(now.getTime() - 86400000);
