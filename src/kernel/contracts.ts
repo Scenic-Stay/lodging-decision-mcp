@@ -36,6 +36,65 @@ export type ListingPolicy = {
 
 export type ListingFees = { cleaning?: number; service?: number; taxes?: number; other?: number };
 
+export type WorkspaceDeskType = 'standing_desk' | 'ergonomic_desk' | 'standard_desk' | 'dining_table' | 'laptop_tray' | 'none';
+export type WorkspaceChairType = 'ergonomic_office' | 'task_chair' | 'dining_chair' | 'none';
+
+export type WorkspaceDetails = {
+  dedicated_room?: boolean;
+  desk_type?: WorkspaceDeskType;
+  chair_type?: WorkspaceChairType;
+  external_monitor?: boolean;
+  docking_station?: boolean;
+  verified_wifi_mbps?: number;
+  ethernet_available?: boolean;
+};
+
+export type PropertyStructure = 'detached_guesthouse' | 'private_adu' | 'top_floor_flat' | 'shared_wall_apartment' | 'ground_floor_street';
+export type AcousticExposure = 'garden_courtyard' | 'quiet_residential' | 'mixed_arterial' | 'busy_commercial';
+
+export type AcousticProfile = {
+  structure?: PropertyStructure;
+  exposure?: AcousticExposure;
+  double_pane_windows?: boolean;
+  quiet_hours_enforced?: boolean;
+  noise_review_sentiment?: 'silent' | 'quiet' | 'moderate' | 'noisy';
+};
+
+export type MarketContext = {
+  submarket_baseline_adr?: number;
+  submarket_name?: string;
+  median_cleaning_fee?: number;
+};
+
+export type CheckinType = 'keyless_smart_lock' | 'keypad_lockbox' | 'in_person_host';
+
+export type AccessDetails = {
+  checkin_type?: CheckinType;
+  superhost?: boolean;
+  guest_favorite?: boolean;
+  host_response_rate_pct?: number;
+  host_response_time_minutes?: number;
+};
+
+export type HostSentimentRating = 'exceptional' | 'welcoming' | 'neutral' | 'cautionary' | 'concerning';
+export type NeighborhoodSafetyRating = 'well_lit_secure' | 'standard_residential' | 'cautionary_at_night' | 'high_incident_area';
+
+export type PrivacyIntegrity = {
+  private_entrance?: boolean;
+  undisclosed_cameras_reported?: boolean;
+  host_unannounced_entry_reported?: boolean;
+  keyless_security_verified?: boolean;
+};
+
+export type SafetyBelongingProfile = {
+  host_sentiment?: HostSentimentRating;
+  host_sentiment_signals?: string[];
+  neighborhood_safety?: NeighborhoodSafetyRating;
+  neighborhood_safety_signals?: string[];
+  privacy_integrity?: PrivacyIntegrity;
+  inclusive_badges?: string[];
+};
+
 export type ListingCandidate = {
   listing_id: string;
   name: string;
@@ -54,6 +113,11 @@ export type ListingCandidate = {
   review_signals?: string[];
   policy?: ListingPolicy;
   fees?: ListingFees;
+  workspace_details?: WorkspaceDetails;
+  acoustic_profile?: AcousticProfile;
+  market_context?: MarketContext;
+  access_details?: AccessDetails;
+  safety_belonging?: SafetyBelongingProfile;
 };
 
 export type LodgingDecisionRequest = {
@@ -77,6 +141,11 @@ export type ScoreBreakdown = {
   quality: number;
   policy: number;
   fees: number;
+  ergonomics?: number;
+  acoustics?: number;
+  price_sanity?: number;
+  access_reliability?: number;
+  safety_belonging?: number;
 };
 
 export type RankedCandidate = {
