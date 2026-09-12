@@ -19,17 +19,21 @@ export interface Env {
 
 const DAILY_REQUEST_CEILING = 2000; // conservative, well inside Workers Free (100k req/day) and KV Free (1k writes/day) limits
 
-const TOOL_DESCRIPTION = `Ranks caller-supplied lodging candidates for a traveler/trip and returns a
+// Official MCP Registry / MCPBeat tool description (PR #25 parity, non-sensitive categories only).
+export const MCP_TOOL_DESCRIPTION = `Ranks caller-supplied lodging candidates for a traveler/trip and returns a
 deterministic, evidence-backed recommendation with score breakdown, tradeoffs, risk flags, missing
 information, and confidence.
 
-SCOPE: Evaluates budget, location, amenities, workspace ergonomics, acoustic isolation, price sanity vs
-submarket baselines, keyless access friction, and Safety & Belonging (host review sentiment, privacy/surveillance
-boundary verification, neighborhood night security, and verified inclusive badges). Does not infer or profile
-demographics on travelers.
+SCOPE (alpha, non-sensitive categories only): budget, location, amenities, quality/reviews, cancellation
+policy, fees, remote-work and family and business/relocation/event trip framing, and stated accessibility
+needs. This tool does NOT accept, infer, or act on race, color, national origin, religion, sex, gender
+identity, sexual orientation, familial status, or any other protected characteristic or Safety & Belonging
+signal -- requests containing such content in free-text fields are rejected, not silently filtered.
 
 This tool does not search inventory (you must supply candidate_listings), does not book or transact, and
-does not persist any data. It is deterministic given identical input. Always re-verify availability, price, and policy before booking.`;
+does not persist any data. It is unauthenticated, unversioned, alpha-quality: recommendations are
+deterministic given identical input but are not calibrated against real human booking outcomes. Always
+re-verify availability, price, and policy before booking.`;
 
 const travelerShape = {
   profile_id: z.string().optional(),
@@ -76,55 +80,8 @@ const listingFeesShape = z.object({
   other: z.number().nonnegative().optional(),
 });
 
-const workspaceDetailsShape = z.object({
-  dedicated_room: z.boolean().optional(),
-  desk_type: z.enum(['standing_desk', 'ergonomic_desk', 'standard_desk', 'dining_table', 'laptop_tray', 'none']).optional(),
-  chair_type: z.enum(['ergonomic_office', 'task_chair', 'dining_chair', 'none']).optional(),
-  external_monitor: z.boolean().optional(),
-  docking_station: z.boolean().optional(),
-  verified_wifi_mbps: z.number().nonnegative().optional(),
-  ethernet_available: z.boolean().optional(),
-}).optional();
-
-const acousticProfileShape = z.object({
-  structure: z.enum(['detached_guesthouse', 'private_adu', 'top_floor_flat', 'shared_wall_apartment', 'ground_floor_street']).optional(),
-  exposure: z.enum(['garden_courtyard', 'quiet_residential', 'mixed_arterial', 'busy_commercial']).optional(),
-  double_pane_windows: z.boolean().optional(),
-  quiet_hours_enforced: z.boolean().optional(),
-  noise_review_sentiment: z.enum(['silent', 'quiet', 'moderate', 'noisy']).optional(),
-}).optional();
-
-const marketContextShape = z.object({
-  submarket_baseline_adr: z.number().nonnegative().optional(),
-  submarket_name: z.string().optional(),
-  median_cleaning_fee: z.number().nonnegative().optional(),
-}).optional();
-
-const accessDetailsShape = z.object({
-  checkin_type: z.enum(['keyless_smart_lock', 'keypad_lockbox', 'in_person_host']).optional(),
-  superhost: z.boolean().optional(),
-  guest_favorite: z.boolean().optional(),
-  host_response_rate_pct: z.number().min(0).max(100).optional(),
-  host_response_time_minutes: z.number().nonnegative().optional(),
-}).optional();
-
-const privacyIntegrityShape = z.object({
-  private_entrance: z.boolean().optional(),
-  undisclosed_cameras_reported: z.boolean().optional(),
-  host_unannounced_entry_reported: z.boolean().optional(),
-  keyless_security_verified: z.boolean().optional(),
-}).optional();
-
-const safetyBelongingShape = z.object({
-  host_sentiment: z.enum(['exceptional', 'welcoming', 'neutral', 'cautionary', 'concerning']).optional(),
-  host_sentiment_signals: z.array(z.string()).optional(),
-  neighborhood_safety: z.enum(['well_lit_secure', 'standard_residential', 'cautionary_at_night', 'high_incident_area']).optional(),
-  neighborhood_safety_signals: z.array(z.string()).optional(),
-  privacy_integrity: privacyIntegrityShape.optional(),
-  inclusive_badges: z.array(z.string()).optional(),
-}).optional();
-
-const candidateShape = z.object({
+// MCP tool candidate shape: exact PR #25 parity for public MCP registry compliance.
+export const mcpCandidateShape = z.object({
   listing_id: z.string(),
   name: z.string(),
   currency: z.string(),
@@ -142,6 +99,64 @@ const candidateShape = z.object({
   review_signals: z.array(z.string()).optional(),
   policy: listingPolicyShape.optional(),
   fees: listingFeesShape.optional(),
+});
+
+export const mcpLodgingDecisionInputShape = {
+  traveler: z.object(travelerShape),
+  trip: z.object(tripShape),
+  candidate_listings: z.array(mcpCandidateShape).min(1).max(50),
+};
+
+// Decision API v1.2 Extended Shapes (used by REST /decide and OpenAPI documentation)
+export const workspaceDetailsShape = z.object({
+  dedicated_room: z.boolean().optional(),
+  desk_type: z.enum(['standing_desk', 'ergonomic_desk', 'standard_desk', 'dining_table', 'laptop_tray', 'none']).optional(),
+  chair_type: z.enum(['ergonomic_office', 'task_chair', 'dining_chair', 'none']).optional(),
+  external_monitor: z.boolean().optional(),
+  docking_station: z.boolean().optional(),
+  verified_wifi_mbps: z.number().nonnegative().optional(),
+  ethernet_available: z.boolean().optional(),
+}).optional();
+
+export const acousticProfileShape = z.object({
+  structure: z.enum(['detached_guesthouse', 'private_adu', 'top_floor_flat', 'shared_wall_apartment', 'ground_floor_street']).optional(),
+  exposure: z.enum(['garden_courtyard', 'quiet_residential', 'mixed_arterial', 'busy_commercial']).optional(),
+  double_pane_windows: z.boolean().optional(),
+  quiet_hours_enforced: z.boolean().optional(),
+  noise_review_sentiment: z.enum(['silent', 'quiet', 'moderate', 'noisy']).optional(),
+}).optional();
+
+export const marketContextShape = z.object({
+  submarket_baseline_adr: z.number().nonnegative().optional(),
+  submarket_name: z.string().optional(),
+  median_cleaning_fee: z.number().nonnegative().optional(),
+}).optional();
+
+export const accessDetailsShape = z.object({
+  checkin_type: z.enum(['keyless_smart_lock', 'keypad_lockbox', 'in_person_host']).optional(),
+  superhost: z.boolean().optional(),
+  guest_favorite: z.boolean().optional(),
+  host_response_rate_pct: z.number().min(0).max(100).optional(),
+  host_response_time_minutes: z.number().nonnegative().optional(),
+}).optional();
+
+export const privacyIntegrityShape = z.object({
+  private_entrance: z.boolean().optional(),
+  undisclosed_cameras_reported: z.boolean().optional(),
+  host_unannounced_entry_reported: z.boolean().optional(),
+  keyless_security_verified: z.boolean().optional(),
+}).optional();
+
+export const safetyBelongingShape = z.object({
+  host_sentiment: z.enum(['exceptional', 'welcoming', 'neutral', 'cautionary', 'concerning']).optional(),
+  host_sentiment_signals: z.array(z.string()).optional(),
+  neighborhood_safety: z.enum(['well_lit_secure', 'standard_residential', 'cautionary_at_night', 'high_incident_area']).optional(),
+  neighborhood_safety_signals: z.array(z.string()).optional(),
+  privacy_integrity: privacyIntegrityShape.optional(),
+  inclusive_badges: z.array(z.string()).optional(),
+}).optional();
+
+export const apiCandidateShape = mcpCandidateShape.extend({
   workspace_details: workspaceDetailsShape,
   acoustic_profile: acousticProfileShape,
   market_context: marketContextShape,
@@ -149,13 +164,13 @@ const candidateShape = z.object({
   safety_belonging: safetyBelongingShape,
 });
 
-const lodgingDecisionInputShape = {
+export const apiLodgingDecisionInputShape = {
   traveler: z.object(travelerShape),
   trip: z.object(tripShape),
-  candidate_listings: z.array(candidateShape).min(1).max(50),
+  candidate_listings: z.array(apiCandidateShape).min(1).max(50),
 };
 
-function buildServer(env?: Env): McpServer {
+export function buildServer(env?: Env): McpServer {
   const server = new McpServer({
     name: 'di-001-a-lodging-decision',
     version: '0.1.0-alpha',
@@ -165,8 +180,8 @@ function buildServer(env?: Env): McpServer {
     'lodging_decision',
     {
       title: 'Lodging Decision',
-      description: TOOL_DESCRIPTION,
-      inputSchema: lodgingDecisionInputShape,
+      description: MCP_TOOL_DESCRIPTION,
+      inputSchema: mcpLodgingDecisionInputShape,
     },
     async (args) => {
       try {
@@ -487,9 +502,148 @@ const openApiSpec = {
                 type: 'object',
                 required: ['traveler', 'trip', 'candidate_listings'],
                 properties: {
-                  traveler: { type: 'object' },
-                  trip: { type: 'object' },
-                  candidate_listings: { type: 'array', items: { type: 'object' } }
+                  traveler: {
+                    type: 'object',
+                    properties: {
+                      profile_id: { type: 'string' },
+                      traveler_type: { type: 'string' },
+                      preferences: { type: 'array', items: { type: 'string' } },
+                      accessibility_needs: { type: 'array', items: { type: 'string' } }
+                    }
+                  },
+                  trip: {
+                    type: 'object',
+                    required: ['purpose', 'group_size', 'nights', 'budget'],
+                    properties: {
+                      purpose: { type: 'string', enum: ['leisure', 'business', 'remote-work', 'family', 'event', 'relocation', 'other'] },
+                      group_size: { type: 'integer', minimum: 1 },
+                      nights: { type: 'integer', minimum: 1 },
+                      budget: {
+                        type: 'object',
+                        required: ['currency', 'max_total'],
+                        properties: {
+                          currency: { type: 'string' },
+                          max_total: { type: 'number' },
+                          max_nightly: { type: 'number' }
+                        }
+                      },
+                      location_preferences: {
+                        type: 'object',
+                        properties: {
+                          preferred_areas: { type: 'array', items: { type: 'string' } },
+                          max_distance_km: { type: 'number' },
+                          near: { type: 'array', items: { type: 'string' } }
+                        }
+                      },
+                      required_amenities: { type: 'array', items: { type: 'string' } },
+                      preferred_amenities: { type: 'array', items: { type: 'string' } },
+                      accessibility_constraints: { type: 'array', items: { type: 'string' } },
+                      work_constraints: { type: 'array', items: { type: 'string' } }
+                    }
+                  },
+                  candidate_listings: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 50,
+                    items: {
+                      type: 'object',
+                      required: ['listing_id', 'name', 'currency', 'nightly_rate', 'max_guests', 'amenities'],
+                      properties: {
+                        listing_id: { type: 'string' },
+                        name: { type: 'string' },
+                        currency: { type: 'string' },
+                        nightly_rate: { type: 'number' },
+                        max_guests: { type: 'integer' },
+                        area: { type: 'string' },
+                        distance_to_preference_km: { type: 'number' },
+                        nearby: { type: 'array', items: { type: 'string' } },
+                        amenities: { type: 'array', items: { type: 'string' } },
+                        accessibility_features: { type: 'array', items: { type: 'string' } },
+                        work_features: { type: 'array', items: { type: 'string' } },
+                        rating: { type: 'number' },
+                        review_count: { type: 'integer' },
+                        quality_signals: { type: 'array', items: { type: 'string' } },
+                        review_signals: { type: 'array', items: { type: 'string' } },
+                        policy: {
+                          type: 'object',
+                          properties: {
+                            cancellation: { type: 'string', enum: ['flexible', 'moderate', 'strict', 'unknown'] },
+                            minimum_nights: { type: 'integer' },
+                            instant_book: { type: 'boolean' },
+                            house_rules: { type: 'array', items: { type: 'string' } }
+                          }
+                        },
+                        fees: {
+                          type: 'object',
+                          properties: {
+                            cleaning: { type: 'number' },
+                            service: { type: 'number' },
+                            taxes: { type: 'number' },
+                            other: { type: 'number' }
+                          }
+                        },
+                        workspace_details: {
+                          type: 'object',
+                          properties: {
+                            dedicated_room: { type: 'boolean' },
+                            desk_type: { type: 'string', enum: ['standing_desk', 'ergonomic_desk', 'standard_desk', 'dining_table', 'laptop_tray', 'none'] },
+                            chair_type: { type: 'string', enum: ['ergonomic_office', 'task_chair', 'dining_chair', 'none'] },
+                            external_monitor: { type: 'boolean' },
+                            docking_station: { type: 'boolean' },
+                            verified_wifi_mbps: { type: 'number' },
+                            ethernet_available: { type: 'boolean' }
+                          }
+                        },
+                        acoustic_profile: {
+                          type: 'object',
+                          properties: {
+                            structure: { type: 'string', enum: ['detached_guesthouse', 'private_adu', 'top_floor_flat', 'shared_wall_apartment', 'ground_floor_street'] },
+                            exposure: { type: 'string', enum: ['garden_courtyard', 'quiet_residential', 'mixed_arterial', 'busy_commercial'] },
+                            double_pane_windows: { type: 'boolean' },
+                            quiet_hours_enforced: { type: 'boolean' },
+                            noise_review_sentiment: { type: 'string', enum: ['silent', 'quiet', 'moderate', 'noisy'] }
+                          }
+                        },
+                        market_context: {
+                          type: 'object',
+                          properties: {
+                            submarket_baseline_adr: { type: 'number' },
+                            submarket_name: { type: 'string' },
+                            median_cleaning_fee: { type: 'number' }
+                          }
+                        },
+                        access_details: {
+                          type: 'object',
+                          properties: {
+                            checkin_type: { type: 'string', enum: ['keyless_smart_lock', 'keypad_lockbox', 'in_person_host'] },
+                            superhost: { type: 'boolean' },
+                            guest_favorite: { type: 'boolean' },
+                            host_response_rate_pct: { type: 'number' },
+                            host_response_time_minutes: { type: 'number' }
+                          }
+                        },
+                        safety_belonging: {
+                          type: 'object',
+                          properties: {
+                            host_sentiment: { type: 'string', enum: ['exceptional', 'welcoming', 'neutral', 'cautionary', 'concerning'] },
+                            host_sentiment_signals: { type: 'array', items: { type: 'string' } },
+                            neighborhood_safety: { type: 'string', enum: ['well_lit_secure', 'standard_residential', 'cautionary_at_night', 'high_incident_area'] },
+                            neighborhood_safety_signals: { type: 'array', items: { type: 'string' } },
+                            privacy_integrity: {
+                              type: 'object',
+                              properties: {
+                                private_entrance: { type: 'boolean' },
+                                undisclosed_cameras_reported: { type: 'boolean' },
+                                host_unannounced_entry_reported: { type: 'boolean' },
+                                keyless_security_verified: { type: 'boolean' }
+                              }
+                            },
+                            inclusive_badges: { type: 'array', items: { type: 'string' } }
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -500,7 +654,21 @@ const openApiSpec = {
             description: 'Scored decision payload with recommendations, trade-offs, and risk flags',
             content: {
               'application/json': {
-                schema: { type: 'object' }
+                schema: {
+                  type: 'object',
+                  properties: {
+                    decision_id: { type: 'string' },
+                    recommended_listing_id: { type: 'string' },
+                    ranked_candidates: { type: 'array', items: { type: 'object' } },
+                    decision_reason: { type: 'string' },
+                    evidence: { type: 'array', items: { type: 'string' } },
+                    tradeoffs: { type: 'array', items: { type: 'string' } },
+                    risk_flags: { type: 'array', items: { type: 'string' } },
+                    confidence: { type: 'number' },
+                    agent_explanation: { type: 'string' },
+                    booking_next_action: { type: 'object' }
+                  }
+                }
               }
             }
           },
