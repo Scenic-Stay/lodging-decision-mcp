@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { classifyRequest, fingerprintToolCall, recordRequest, dayKeyFor, type Env } from '../src/worker';
+import worker, { classifyRequest, fingerprintToolCall, recordRequest, dayKeyFor, type Env } from '../src/worker';
 
 // Minimal in-memory stand-in for Workers KV, just enough for recordRequest's
 // get/put calls. Not a full KVNamespace implementation.
@@ -125,4 +125,32 @@ test('recordRequest: discovery-class traffic is tracked separately from tool-cal
 
   assert.ok(store.has(`class:discovery:${day}`), 'expected sampled discovery-class writes');
   assert.ok(!store.has(`class:tools_call_lodging_decision:${day}`), 'discovery traffic must not inflate the tool-call class counter');
+});
+
+test('fetch exposes only DI-001-A worker endpoints outside MCP', async () => {
+  const { env } = makeMockKv();
+
+  const options = await worker.fetch(new Request('https://example.com/mcp', { method: 'OPTIONS' }), env);
+  assert.equal(options.status, 204);
+
+  const health = await worker.fetch(new Request('https://example.com/health'), env);
+  assert.equal(health.status, 200);
+  assert.equal(await health.text(), 'ok');
+
+  const glama = await worker.fetch(new Request('https://example.com/.well-known/glama.json'), env);
+  assert.equal(glama.status, 200);
+  assert.equal((await glama.json() as any).maintainers[0].email, 'scenicstay@abetterbnb.com');
+
+  const stats = await worker.fetch(new Request('https://example.com/stats'), env);
+  assert.equal(stats.status, 200);
+  assert.equal(typeof (await stats.json() as any).today_estimated_requests, 'number');
+
+  for (const path of ['/openapi.json', '/decide', '/api/decide', '/benchmark', '/api/benchmark']) {
+    const response = await worker.fetch(new Request(`https://example.com${path}`, {
+      method: path.includes('decide') ? 'POST' : 'GET',
+      body: path.includes('decide') ? '{}' : undefined,
+    }), env);
+    assert.equal(response.status, 404);
+    assert.equal(await response.text(), 'Not found. Supported endpoints: /mcp (MCP), /stats, /health.');
+  }
 });
