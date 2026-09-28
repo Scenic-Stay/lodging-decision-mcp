@@ -19,20 +19,20 @@ export interface Env {
 
 const DAILY_REQUEST_CEILING = 2000; // conservative, well inside Workers Free (100k req/day) and KV Free (1k writes/day) limits
 
-// Official MCP Registry / MCPBeat tool description (PR #25 parity, non-sensitive categories only).
+// Official MCP Registry / MCPBeat tool description with active Safety & Belonging and Privacy Integrity.
 export const MCP_TOOL_DESCRIPTION = `Ranks caller-supplied lodging candidates for a traveler/trip and returns a
 deterministic, evidence-backed recommendation with score breakdown, tradeoffs, risk flags, missing
 information, and confidence.
 
-SCOPE (alpha, non-sensitive categories only): budget, location, amenities, quality/reviews, cancellation
-policy, fees, remote-work and family and business/relocation/event trip framing, and stated accessibility
-needs. This tool does NOT accept, infer, or act on race, color, national origin, religion, sex, gender
-identity, sexual orientation, familial status, or any other protected characteristic or Safety & Belonging
-signal -- requests containing such content in free-text fields are rejected, not silently filtered.
+SCOPE: budget, location, amenities, quality/reviews, cancellation policy, fees, remote-work ergonomics,
+acoustic profiles, and comprehensive Safety & Belonging intelligence. Specifically evaluates:
+1. Privacy Integrity: flags reported undisclosed cameras or host unannounced entry violations, rewarding direct private entrance and keyless security.
+2. Host Demeanor Sentiment: verifies host hospitality across diverse guest backgrounds and catches micromanagement or discriminatory hostility.
+3. Neighborhood Night Environment: differentiates well-lit pedestrian corridors from dark/isolated streets and high-incident areas.
+4. Inclusive Hospitality: evaluates verified public inclusive commitments.
 
 This tool does not search inventory (you must supply candidate_listings), does not book or transact, and
-does not persist any data. It is unauthenticated, unversioned, alpha-quality: recommendations are
-deterministic given identical input but are not calibrated against real human booking outcomes. Always
+does not persist any data. Deterministic evaluations provide actionable booking next steps. Always
 re-verify availability, price, and policy before booking.`;
 
 const travelerShape = {
@@ -101,13 +101,7 @@ export const mcpCandidateShape = z.object({
   fees: listingFeesShape.optional(),
 });
 
-export const mcpLodgingDecisionInputShape = {
-  traveler: z.object(travelerShape),
-  trip: z.object(tripShape),
-  candidate_listings: z.array(mcpCandidateShape).min(1).max(50),
-};
-
-// Decision API v1.2 Extended Shapes (used by REST /decide and OpenAPI documentation)
+// Extended Decision Shapes (workspace, acoustics, price sanity, access reliability, safety & belonging)
 export const workspaceDetailsShape = z.object({
   dedicated_room: z.boolean().optional(),
   desk_type: z.enum(['standing_desk', 'ergonomic_desk', 'standard_desk', 'dining_table', 'laptop_tray', 'none']).optional(),
@@ -163,6 +157,12 @@ export const apiCandidateShape = mcpCandidateShape.extend({
   access_details: accessDetailsShape,
   safety_belonging: safetyBelongingShape,
 });
+
+export const mcpLodgingDecisionInputShape = {
+  traveler: z.object(travelerShape),
+  trip: z.object(tripShape),
+  candidate_listings: z.array(apiCandidateShape).min(1).max(50),
+};
 
 export const apiLodgingDecisionInputShape = {
   traveler: z.object(travelerShape),

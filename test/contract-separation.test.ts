@@ -15,15 +15,16 @@ function makeMockKv(): { env: Env; store: Map<string, string> } {
   return { env: { DI_001_A_ABUSE_CEILING: kv as any }, store };
 }
 
-test('MCP Tool contract maintains strict PR #25 non-sensitive parity', () => {
+test('MCP Tool contract exposes Safety & Belonging and Privacy Integrity', () => {
   const server = buildServer();
   assert.ok(server);
 
-  // Verify MCP Tool description highlights non-sensitive categories only
-  assert.ok(MCP_TOOL_DESCRIPTION.includes('SCOPE (alpha, non-sensitive categories only)'));
-  assert.ok(MCP_TOOL_DESCRIPTION.includes('does NOT accept, infer, or act on race, color, national origin'));
+  // Verify MCP Tool description highlights Privacy Integrity and Safety & Belonging
+  assert.ok(MCP_TOOL_DESCRIPTION.includes('Privacy Integrity: flags reported undisclosed cameras'));
+  assert.ok(MCP_TOOL_DESCRIPTION.includes('Host Demeanor Sentiment'));
+  assert.ok(MCP_TOOL_DESCRIPTION.includes('Neighborhood Night Environment'));
 
-  // Verify candidateShape in MCP tool has non-sensitive properties and does NOT mandate v1.2 fields
+  // Verify candidateShape in MCP tool parses cleanly
   const parsedCandidate = mcpCandidateShape.safeParse({
     listing_id: 'test-1',
     name: 'Test Listing',
