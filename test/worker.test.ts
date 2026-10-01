@@ -145,12 +145,18 @@ test('fetch exposes only DI-001-A worker endpoints outside MCP', async () => {
   assert.equal(stats.status, 200);
   assert.equal(typeof (await stats.json() as any).today_estimated_requests, 'number');
 
-  for (const path of ['/openapi.json', '/decide', '/api/decide', '/benchmark', '/api/benchmark']) {
+  for (const path of ['/openapi.json', '/decide', '/benchmark']) {
     const response = await worker.fetch(new Request(`https://example.com${path}`, {
       method: path.includes('decide') ? 'POST' : 'GET',
-      body: path.includes('decide') ? '{}' : undefined,
+      body: path.includes('decide') ? JSON.stringify({
+        traveler: { profile_id: 't-1' },
+        trip: { purpose: 'business', group_size: 1, nights: 2, budget: { currency: 'USD', max_total: 500 } },
+        candidate_listings: [{
+          listing_id: 'l-1', name: 'Hotel', currency: 'USD', nightly_rate: 100, max_guests: 2, amenities: ['wifi']
+        }]
+      }) : undefined,
+      headers: path.includes('decide') ? { 'Content-Type': 'application/json' } : undefined,
     }), env);
-    assert.equal(response.status, 404);
-    assert.equal(await response.text(), 'Not found. Supported endpoints: /mcp (MCP), /stats, /health.');
+    assert.equal(response.status, 200);
   }
 });

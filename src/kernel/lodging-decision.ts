@@ -166,6 +166,273 @@ function evaluateCandidate(request: LodgingDecisionRequest, candidate: ListingCa
   if (candidate.review_signals?.length) risks.push({ listing_id: listingId, code: 'REVIEW_CAUTION', severity: 'medium', message: candidate.review_signals.join(' ') });
   if (hardFailures.length) risks.push({ listing_id: listingId, code: 'HARD_CONSTRAINT_FAILURE', severity: 'high', message: `Fails: ${hardFailures.join(', ')}.` });
 
+  // High-Resolution Decision Intelligence Signals:
+  let ergonomicsScore: number | undefined;
+  if (candidate.workspace_details) {
+    const ws = candidate.workspace_details;
+    let ergo = 0;
+    if (ws.desk_type === 'standing_desk' || ws.desk_type === 'ergonomic_desk') ergo += 4;
+    else if (ws.desk_type === 'standard_desk') ergo += 2.5;
+    else if (ws.desk_type === 'dining_table') ergo += 1;
+
+    if (ws.chair_type === 'ergonomic_office') ergo += 3;
+    else if (ws.chair_type === 'task_chair') ergo += 2;
+    else if (ws.chair_type === 'dining_chair') ergo += 0.5;
+
+    if (ws.external_monitor) ergo += 1.5;
+    if (ws.dedicated_room) ergo += 1.5;
+    ergonomicsScore = round(Math.min(10, ergo));
+
+    const monitorDesc = ws.external_monitor ? ' + 4K monitor' : '';
+    const deskDesc = ws.desk_type ? ws.desk_type.replace('_', ' ') : 'desk';
+    const chairDesc = ws.chair_type ? ws.chair_type.replace('_', ' ') : 'chair';
+    evidence.push({
+      listing_id: listingId,
+      signal: 'workspace_ergonomics',
+      value: `${deskDesc} / ${chairDesc}${monitorDesc}`,
+      impact: ergo >= 6 ? 'positive' : ergo >= 3 ? 'neutral' : 'negative',
+      explanation: `Verified workstation setup${ws.dedicated_room ? ' in private dedicated room' : ''}.`
+    });
+
+    if (ws.verified_wifi_mbps !== undefined) {
+      const fastWifi = ws.verified_wifi_mbps >= 100;
+      evidence.push({
+        listing_id: listingId,
+        signal: 'verified_wifi_speed',
+        value: `${ws.verified_wifi_mbps} Mbps`,
+        impact: fastWifi ? 'positive' : 'negative',
+        explanation: fastWifi ? 'Verified high-bandwidth connection suitable for continuous video calls and remote work.' : 'Bandwidth below 100 Mbps threshold for intensive remote workflows.'
+      });
+      if (trip.purpose === 'remote-work' && ws.verified_wifi_mbps < 50) {
+        risks.push({ listing_id: listingId, code: 'LOW_WIFI_BANDWIDTH', severity: 'medium', message: `Verified WiFi is ${ws.verified_wifi_mbps} Mbps, below remote-work recommendation.` });
+      }
+    }
+  }
+
+  let acousticsScore: number | undefined;
+  if (candidate.acoustic_profile) {
+    const ac = candidate.acoustic_profile;
+    let acScore = 5;
+    if (ac.structure === 'detached_guesthouse' || ac.structure === 'private_adu') acScore += 3;
+    else if (ac.structure === 'top_floor_flat') acScore += 1.5;
+    else if (ac.structure === 'ground_floor_street') acScore -= 2;
+
+    if (ac.exposure === 'garden_courtyard') acScore += 2;
+    else if (ac.exposure === 'busy_commercial') acScore -= 2;
+
+    if (ac.noise_review_sentiment === 'silent' || ac.noise_review_sentiment === 'quiet') acScore += 1;
+    else if (ac.noise_review_sentiment === 'noisy') {
+      acScore -= 3;
+      risks.push({ listing_id: listingId, code: 'NOISE_EXPOSURE', severity: 'high', message: 'Reviews or acoustic profile indicate significant noise distractions.' });
+    }
+    acousticsScore = round(clamp(acScore, 0, 10));
+
+    evidence.push({
+      listing_id: listingId,
+      signal: 'acoustic_profile',
+      value: `${ac.structure?.replace('_', ' ') ?? 'structure'} (${ac.exposure?.replace('_', ' ') ?? 'exposure'})`,
+      impact: acousticsScore >= 7 ? 'positive' : acousticsScore >= 4 ? 'neutral' : 'negative',
+      explanation: `Acoustic isolation rating: ${acousticsScore}/10.${ac.quiet_hours_enforced ? ' Quiet hours strictly enforced.' : ''}`
+    });
+  }
+
+  let priceSanityScore: number | undefined;
+  if (candidate.market_context?.submarket_baseline_adr) {
+    const baseline = candidate.market_context.submarket_baseline_adr;
+    const ratio = candidate.nightly_rate / baseline;
+    priceSanityScore = round(ratio <= 1.05 ? 10 : ratio <= 1.25 ? 8 : ratio <= 1.5 ? 5 : 2);
+
+    if (ratio <= 1.15) {
+      evidence.push({
+        listing_id: listingId,
+        signal: 'price_sanity',
+        value: `$${candidate.nightly_rate} vs $${baseline} baseline`,
+        impact: 'positive',
+        explanation: `Nightly rate aligns with submarket equilibrium ($${baseline}/night).`
+      });
+    } else if (ratio > 1.4) {
+      risks.push({
+        listing_id: listingId,
+        code: 'UNJUSTIFIED_PRICE_PREMIUM',
+        severity: 'medium',
+        message: `Nightly rate ($${candidate.nightly_rate}) is ${round((ratio - 1) * 100, 0)}% above submarket baseline ($${baseline}) without proportional amenity depth.`
+      });
+    }
+
+    if (candidate.fees?.cleaning && candidate.market_context.median_cleaning_fee) {
+      const cleanRatio = candidate.fees.cleaning / candidate.market_context.median_cleaning_fee;
+      if (cleanRatio > 1.5) {
+        risks.push({
+          listing_id: listingId,
+          code: 'DISPROPORTIONATE_CLEANING_FEE',
+          severity: 'medium',
+          message: `Cleaning fee ($${candidate.fees.cleaning}) is significantly higher than submarket median ($${candidate.market_context.median_cleaning_fee}).`
+        });
+      }
+    }
+  }
+
+  let accessReliabilityScore: number | undefined;
+  if (candidate.access_details) {
+    const acc = candidate.access_details;
+    let accScore = 5;
+    if (acc.checkin_type === 'keyless_smart_lock') {
+      accScore += 3;
+      evidence.push({
+        listing_id: listingId,
+        signal: 'keyless_access',
+        value: 'Smart Lock Keypad',
+        impact: 'positive',
+        explanation: 'Frictionless 24/7 self check-in via automated synchronized PIN.'
+      });
+    } else if (acc.checkin_type === 'in_person_host') {
+      accScore -= 1;
+      risks.push({
+        listing_id: listingId,
+        code: 'HOST_MEET_CHECKIN',
+        severity: 'low',
+        message: 'In-person key handoff required; potential arrival coordination friction.'
+      });
+    }
+
+    if (acc.guest_favorite || acc.superhost) {
+      accScore += 2;
+      evidence.push({
+        listing_id: listingId,
+        signal: 'host_distinction',
+        value: acc.guest_favorite ? 'Guest Favorite & Superhost' : 'Superhost',
+        impact: 'positive',
+        explanation: 'Demonstrated operational reliability, verified high cleanliness, and low cancellation rates.'
+      });
+    }
+    accessReliabilityScore = round(clamp(accScore, 0, 10));
+  }
+
+  // Safety, Belonging & Inclusivity Signals (Doc 36 Framework)
+  let safetyBelongingScore: number | undefined;
+  if (candidate.safety_belonging) {
+    const sb = candidate.safety_belonging;
+    let sbScore = 5;
+
+    // 1. Boundary & Privacy Violations (Hard failures / immediate disqualification)
+    if (sb.privacy_integrity) {
+      if (sb.privacy_integrity.undisclosed_cameras_reported) {
+        hardFailures.push('safety:undisclosed_cameras_reported');
+        risks.push({
+          listing_id: listingId,
+          code: 'SURVEILLANCE_BOUNDARY_VIOLATION',
+          severity: 'high',
+          message: 'Guest reviews or inspection indicate reported undisclosed cameras on the premises.'
+        });
+        sbScore -= 5;
+      }
+      if (sb.privacy_integrity.host_unannounced_entry_reported) {
+        hardFailures.push('safety:host_unannounced_entry_reported');
+        risks.push({
+          listing_id: listingId,
+          code: 'HOST_INTRUSION_VIOLATION',
+          severity: 'high',
+          message: 'Reports of host entering the unit unannounced without guest consent.'
+        });
+        sbScore -= 5;
+      }
+      if (sb.privacy_integrity.private_entrance) {
+        sbScore += 1.5;
+        evidence.push({
+          listing_id: listingId,
+          signal: 'private_entrance',
+          value: 'Direct private entry',
+          impact: 'positive',
+          explanation: 'Physical boundary isolation with dedicated private access.'
+        });
+      }
+      if (sb.privacy_integrity.keyless_security_verified) {
+        sbScore += 1;
+      }
+    }
+
+    // 2. Host Demeanor & Review Hospitality Sentiment
+    if (sb.host_sentiment === 'exceptional') {
+      sbScore += 3;
+      evidence.push({
+        listing_id: listingId,
+        signal: 'host_hospitality_sentiment',
+        value: 'Exceptional (Verified Welcoming)',
+        impact: 'positive',
+        explanation: 'Reviews document outstanding warmth, clear respect for guest autonomy, and consistent welcoming demeanor across diverse guest backgrounds.'
+      });
+    } else if (sb.host_sentiment === 'welcoming') {
+      sbScore += 2;
+      evidence.push({
+        listing_id: listingId,
+        signal: 'host_hospitality_sentiment',
+        value: 'Welcoming',
+        impact: 'positive',
+        explanation: 'Positive guest reviews confirming respectful, hospitable host interactions.'
+      });
+    } else if (sb.host_sentiment === 'cautionary') {
+      sbScore -= 2;
+      risks.push({
+        listing_id: listingId,
+        code: 'HOST_DEMEANOR_CAUTION',
+        severity: 'medium',
+        message: 'Review patterns flag rigid micromanagement, uncomfortable interactions, or abrupt communication.'
+      });
+    } else if (sb.host_sentiment === 'concerning') {
+      sbScore -= 4;
+      hardFailures.push('safety:host_discrimination_risk');
+      risks.push({
+        listing_id: listingId,
+        code: 'DISCRIMINATORY_HOST_SIGNAL',
+        severity: 'high',
+        message: 'Multiple guest reviews report discriminatory treatment, uncomfortable scrutiny, or hostility toward specific guest groups.'
+      });
+    }
+
+    // 3. Neighborhood Night Safety & Environment
+    if (sb.neighborhood_safety === 'well_lit_secure') {
+      sbScore += 2;
+      evidence.push({
+        listing_id: listingId,
+        signal: 'neighborhood_safety_perception',
+        value: 'Well-lit & Secure',
+        impact: 'positive',
+        explanation: 'Neighborhood environment characterized by active pedestrian safety, well-lit corridors, and safe transit access.'
+      });
+    } else if (sb.neighborhood_safety === 'cautionary_at_night') {
+      sbScore -= 1.5;
+      risks.push({
+        listing_id: listingId,
+        code: 'NIGHTTIME_SAFETY_CAUTION',
+        severity: 'medium',
+        message: 'Guest reviews cite dark or isolated streets and recommend vigilance arriving late at night.'
+      });
+    } else if (sb.neighborhood_safety === 'high_incident_area') {
+      sbScore -= 4;
+      hardFailures.push('safety:high_incident_neighborhood');
+      risks.push({
+        listing_id: listingId,
+        code: 'HIGH_INCIDENT_AREA',
+        severity: 'high',
+        message: 'Documented elevated safety incidents or local harassment reported in immediate vicinity.'
+      });
+    }
+
+    // 4. Inclusivity Badges (Class A public declarations)
+    if (sb.inclusive_badges?.length) {
+      sbScore += Math.min(2, sb.inclusive_badges.length * 0.75);
+      evidence.push({
+        listing_id: listingId,
+        signal: 'inclusive_designations',
+        value: sb.inclusive_badges.join(', '),
+        impact: 'positive',
+        explanation: 'Verified public commitments to inclusive hospitality.'
+      });
+    }
+
+    safetyBelongingScore = round(clamp(sbScore, 0, 10));
+  }
+
   evidence.push({ listing_id: listingId, signal: 'estimated_total', value: estimatedTotal, impact: totalBudgetMet ? 'positive' : 'negative', explanation: `${trip.nights} nights plus supplied fees, compared with the trip budget.` });
   evidence.push({ listing_id: listingId, signal: 'required_amenities', value: `${requiredMatches}/${requiredAmenities.length}`, impact: requiredMatches === requiredAmenities.length ? 'positive' : 'negative', explanation: 'Explicit match count for required amenities.' });
   if (candidate.rating !== undefined) evidence.push({ listing_id: listingId, signal: 'rating', value: candidate.rating, impact: candidate.rating >= 4.7 ? 'positive' : candidate.rating < 4.2 ? 'negative' : 'neutral', explanation: `Quality signal backed by ${candidate.review_count ?? 'an unknown number of'} reviews.` });
@@ -176,7 +443,13 @@ function evaluateCandidate(request: LodgingDecisionRequest, candidate: ListingCa
     accessibility: round(accessibilityScore), work: round(workScore), quality: round(qualityScore),
     policy: round(policyScore), fees: round(feesScore)
   };
-  const rawScore = Object.values(scoreBreakdown).reduce((sum, score) => sum + score, 0);
+  if (ergonomicsScore !== undefined) scoreBreakdown.ergonomics = ergonomicsScore;
+  if (acousticsScore !== undefined) scoreBreakdown.acoustics = acousticsScore;
+  if (priceSanityScore !== undefined) scoreBreakdown.price_sanity = priceSanityScore;
+  if (accessReliabilityScore !== undefined) scoreBreakdown.access_reliability = accessReliabilityScore;
+  if (safetyBelongingScore !== undefined) scoreBreakdown.safety_belonging = safetyBelongingScore;
+
+  const rawScore = Object.values(scoreBreakdown).reduce((sum, score) => sum + (score ?? 0), 0);
   const score = round(clamp(rawScore - hardFailures.length * 12, 0, 100));
   const eligible = hardFailures.length === 0;
 
@@ -194,6 +467,28 @@ function buildTradeoffs(recommended: CandidateEvaluation, runnerUp: CandidateEva
     if (recommended.estimated_total > runnerUp.estimated_total) tradeoffs.push({ listing_id: recommended.listing_id, description: `Costs ${round(recommended.estimated_total - runnerUp.estimated_total)} ${recommended.currency} more than ${runnerUp.listing_id}.` });
     if ((recommended.candidate.rating ?? 0) < (runnerUp.candidate.rating ?? 0)) tradeoffs.push({ listing_id: recommended.listing_id, description: `Has a lower supplied rating than ${runnerUp.listing_id}.` });
     if ((recommended.candidate.distance_to_preference_km ?? 0) > (runnerUp.candidate.distance_to_preference_km ?? Number.POSITIVE_INFINITY)) tradeoffs.push({ listing_id: recommended.listing_id, description: `Is farther from the stated location preference than ${runnerUp.listing_id}.` });
+    if (recommended.candidate.workspace_details?.external_monitor && !runnerUp.candidate.workspace_details?.external_monitor) {
+      tradeoffs.push({ listing_id: recommended.listing_id, description: `Provides a dedicated external 4K monitor, which ${runnerUp.listing_id} lacks.` });
+    }
+    if (['detached_guesthouse', 'private_adu'].includes(recommended.candidate.acoustic_profile?.structure ?? '') && runnerUp.candidate.acoustic_profile?.structure === 'shared_wall_apartment') {
+      tradeoffs.push({ listing_id: recommended.listing_id, description: `Offers detached acoustic privacy without shared apartment walls.` });
+    }
+    if (recommended.candidate.safety_belonging && runnerUp.candidate.safety_belonging) {
+      const recSb = recommended.candidate.safety_belonging;
+      const runSb = runnerUp.candidate.safety_belonging;
+      if (recSb.host_sentiment === 'exceptional' && ['cautionary', 'concerning'].includes(runSb.host_sentiment ?? '')) {
+        tradeoffs.push({
+          listing_id: recommended.listing_id,
+          description: `Provides verified welcoming host sentiment with zero boundary complaints, whereas ${runnerUp.listing_id} has review cautions regarding host demeanor.`
+        });
+      }
+      if (recSb.neighborhood_safety === 'well_lit_secure' && runSb.neighborhood_safety === 'cautionary_at_night') {
+        tradeoffs.push({
+          listing_id: recommended.listing_id,
+          description: `Located in a well-lit, secure corridor suitable for late-night arrivals, compared to ${runnerUp.listing_id}'s cautionary nighttime neighborhood perception.`
+        });
+      }
+    }
   }
   if (recommended.missing.length) tradeoffs.push({ listing_id: recommended.listing_id, description: `Recommendation relies on incomplete information: ${recommended.missing.join(', ')}.` });
   if (!tradeoffs.length) tradeoffs.push({ listing_id: recommended.listing_id, description: 'No material tradeoff was found in the supplied candidate signals.' });
